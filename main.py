@@ -79,7 +79,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://69ab658eab97ec7022526987--aitoolsprosmart-web.netlify.app",
+        "https://aitoolsprosmart-web.netlify.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -188,4 +192,5 @@ def get_youtube_videos(db: Session = Depends(get_db)):
                 
         return videos
     except Exception as e:
+
         return []
