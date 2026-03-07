@@ -29,7 +29,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 # --- 2. KONEKCIJA SA BAZOM (RAILWAY POSTGRES) ---
-DATABASE_URL = "postgresql://postgres:MAIuMNahFMLqEjTXHLpcojyqyAjBjAx@ballast.proxy.rlwy.net:24562/railway"
+DATABASE_URL = "postgresql://postgres:MAiunMNahFMLqEjTXHLpcojyqyAjBjAx@postgres.railway.internal:5432/railway"
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -157,3 +157,4 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
