@@ -16,8 +16,6 @@ from typing import List, Optional
 SECRET_KEY = "matrix-super-tajni-kljuc-pro-smart-2026"
 ALGORITHM = "HS256"
 ADMIN_PASSWORD = "goran1972$@"
-YOUTUBE_API_KEY = "AIzaSyCwy46TsBPW7LxKTjExhQbHhYhq8lyc2YM"
-CHANNEL_ID = "UC6ilBUks_oFMSD8CE9qD6lQ"
 security = HTTPBearer()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -28,8 +26,8 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-# --- 2. KONEKCIJA SA BAZOM (RAILWAY POSTGRES) ---
-DATABASE_URL = "postgresql://postgres:MAiunMNahFMLqEjTXHLpcojyqyAjBjAx@postgres.railway.internal:5432/railway"
+# --- 2. KONEKCIJA (SA ZASTITOM PROTIV PUCANJA) ---
+DATABASE_URL = "postgresql://postgres:MAiunMNahFMLqEjTXHLpcojyqyAjBjAx@ballast.proxy.rlwy.net:24562/railway"
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -54,7 +52,7 @@ class DBHiddenVideo(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# --- 4. MODELI ZA PODATKE (PYDANTIC) ---
+# --- 4. MODELI ---
 class ProductBase(BaseModel):
     name: Optional[str] = ""
     type: Optional[str] = ""
@@ -77,16 +75,19 @@ class Product(ProductBase):
 class LoginRequest(BaseModel):
     password: str
 
-# --- 5. FASTAPI I CORS PODEŠAVANJA ---
 app = FastAPI()
+
+# --- OVO JE DODATA LISTA ZA CORS ---
+origins = [
+    "https://aitoolsprosmart.com",
+    "https://www.aitoolsprosmart.com",
+    "https://aitoolsprosmart-web.netlify.app",
+    "http://localhost:5173",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://69ab658eab97ec7022526987--aitoolsprosmart-web.netlify.app",
-        "https://aitoolsprosmart-web.netlify.app"
-    ],
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -99,20 +100,23 @@ def get_db():
     finally:
         db.close()
 
-# --- 6. RUTE (API ENDPOINTS) ---
-
+# --- AUTENTIFIKACIJA RUTA ---
 @app.post("/api/login")
-async def login(req: LoginRequest):
+def login(req: LoginRequest):
     if req.password == ADMIN_PASSWORD:
-        token = jwt.encode({"admin": True}, SECRET_KEY, algorithm=ALGORITHM)
-        return {"token": token}
-    raise HTTPException(status_code=401, detail="Pogrešna lozinka")
+        expiration = datetime.utcnow() + timedelta(hours=24) # Token vazi 24 sata
+        token = jwt.encode({"sub": "admin", "exp": expiration}, SECRET_KEY, algorithm=ALGORITHM)
+        return {"access_token": token}
+    raise HTTPException(status_code=401, detail="Access Denied")
 
+# --- RUTE ZA PROIZVODE ---
+# OTVORENO ZA SVE (Prikaz na sajtu)
 @app.get("/api/products", response_model=List[Product])
-def get_products(db: Session = Depends(get_db)):
+def read_products(db: Session = Depends(get_db)):
     return db.query(DBProduct).all()
 
-@app.post("/api/products", response_model=Product)
+# ZAKLJUČANO (Mora imati token)
+@app.post("/api/products")
 def create_product(product: ProductCreate, db: Session = Depends(get_db), token: dict = Depends(verify_token)):
     db_product = DBProduct(**product.dict())
     db.add(db_product)
@@ -120,41 +124,76 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db), token:
     db.refresh(db_product)
     return db_product
 
+# ZAKLJUČANO
+@app.put("/api/products/{product_id}")
+def update_product(product_id: str, product: ProductBase, db: Session = Depends(get_db), token: dict = Depends(verify_token)):
+    db_product = db.query(DBProduct).filter(DBProduct.id == product_id).first()
+    if not db_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    update_data = product.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_product, key, value)
+        
+    db.commit()
+    db.refresh(db_product)
+    return db_product
+
+# ZAKLJUČANO
 @app.delete("/api/products/{product_id}")
 def delete_product(product_id: str, db: Session = Depends(get_db), token: dict = Depends(verify_token)):
     db_product = db.query(DBProduct).filter(DBProduct.id == product_id).first()
     if not db_product:
-        raise HTTPException(status_code=404, detail="Proizvod nije pronađen")
+        raise HTTPException(status_code=404, detail="Not found")
     db.delete(db_product)
     db.commit()
-    return {"message": "Obrisano"}
+    return {"status": "deleted"}
 
-# --- 7. YOUTUBE MOTOR (NOVO!) ---
-@app.get("/api/youtube")
-async def get_youtube_videos():
+# ZAKLJUČANO
+@app.post("/api/hidden-videos/{video_id}")
+def hide_video(video_id: str, db: Session = Depends(get_db), token: dict = Depends(verify_token)):
+    db_hidden = DBHiddenVideo(video_id=video_id)
+    db.add(db_hidden)
+    db.commit()
+    return {"status": f"Video {video_id} is now hidden"}
+
+# ZAKLJUČANO
+@app.delete("/api/hidden-videos/{video_id}")
+def unhide_video(video_id: str, db: Session = Depends(get_db), token: dict = Depends(verify_token)):
+    db_video = db.query(DBHiddenVideo).filter(DBHiddenVideo.video_id == video_id).first()
+    if db_video:
+        db.delete(db_video)
+        db.commit()
+    return {"status": "unhidden"}
+
+# OTVORENO ZA SVE
+@app.get("/api/videos")
+def get_youtube_videos(db: Session = Depends(get_db)):
+    MY_CHANNEL_ID = "UC6ilBUks_oFMSD8CE9qD6lQ"
+    url = f"https://www.youtube.com/channel/{MY_CHANNEL_ID}/videos"
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
+    
     try:
-        url = f"https://www.googleapis.com/youtube/v3/search?key={YOUTUBE_API_KEY}&channelId={CHANNEL_ID}&part=snippet,id&order=date&maxResults=6&type=video"
-        response = requests.get(url)
-        data = response.json()
+        blacklisted = [v.video_id for v in db.query(DBHiddenVideo).all()]
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
         
-        if "items" not in data:
-            return []
-            
         videos = []
-        for item in data["items"]:
-            videos.append({
-                "id": item["id"]["videoId"],
-                "title": item["snippet"]["title"],
-                "thumbnail": item["snippet"]["thumbnails"]["high"]["url"],
-                "publishedAt": item["snippet"]["publishedAt"]
-            })
+        seen_ids = set()
+        matches = re.findall(r'"videoId":"([^"]+)".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\]', response.text)
+
+        for vid_id, title in matches:
+            if vid_id in blacklisted: continue
+            if vid_id not in seen_ids and len(vid_id) == 11:
+                clean_title = title.encode('utf-8').decode('unicode-escape').replace('\\"', '"')
+                videos.append({"title": clean_title, "url": f"https://www.youtube.com/watch?v={vid_id}"})
+                seen_ids.add(vid_id)
+            if len(videos) >= 8: break
+                
         return videos
     except Exception as e:
-        print(f"YouTube Error: {e}")
         return []
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
