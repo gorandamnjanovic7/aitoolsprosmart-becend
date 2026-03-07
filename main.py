@@ -16,6 +16,8 @@ from typing import List, Optional
 SECRET_KEY = "matrix-super-tajni-kljuc-pro-smart-2026"
 ALGORITHM = "HS256"
 ADMIN_PASSWORD = "goran1972$@"
+YOUTUBE_API_KEY = "AIzaSyCwy46TsBPW7LxKTjExhQbHhYhq8lyc2YM"
+CHANNEL_ID = "UC6ilBUks_oFMSD8CE9qD6lQ"
 security = HTTPBearer()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -194,3 +196,4 @@ def get_youtube_videos(db: Session = Depends(get_db)):
     except Exception as e:
 
         return []
+
