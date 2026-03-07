@@ -167,7 +167,7 @@ def unhide_video(video_id: str, db: Session = Depends(get_db), token: dict = Dep
     return {"status": "unhidden"}
 
 # OTVORENO ZA SVE
-@app.get("/api/videos")
+@app.get("/api/youtube")
 def get_youtube_videos(db: Session = Depends(get_db)):
     MY_CHANNEL_ID = "UC6ilBUks_oFMSD8CE9qD6lQ"
     url = f"https://www.youtube.com/channel/{MY_CHANNEL_ID}/videos"
