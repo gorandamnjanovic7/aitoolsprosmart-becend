@@ -77,7 +77,7 @@ class LoginRequest(BaseModel):
 
 app = FastAPI()
 
-# --- OVO JE DODATA LISTA ZA CORS ---
+# --- CORS LISTA: DOZVOLA ZA TVOJ SAJT ---
 origins = [
     "https://aitoolsprosmart.com",
     "https://www.aitoolsprosmart.com",
@@ -166,30 +166,29 @@ def unhide_video(video_id: str, db: Session = Depends(get_db), token: dict = Dep
         db.commit()
     return {"status": "unhidden"}
 
-# OTVORENO ZA SVE
+# --- OTVORENO ZA SVE: NOVI YOUTUBE RSS SISTEM ---
 @app.get("/api/youtube")
 def get_youtube_videos(db: Session = Depends(get_db)):
     MY_CHANNEL_ID = "UC6ilBUks_oFMSD8CE9qD6lQ"
-    url = f"https://www.youtube.com/channel/{MY_CHANNEL_ID}/videos"
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-    }
+    # Koristimo zvanični XML feed koji YouTube ne blokira
+    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={MY_CHANNEL_ID}"
     
     try:
         blacklisted = [v.video_id for v in db.query(DBHiddenVideo).all()]
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         
         videos = []
         seen_ids = set()
-        matches = re.findall(r'"videoId":"([^"]+)".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\]', response.text)
+        
+        # Tražimo ID i Naslov u XML formatu
+        matches = re.findall(r'<yt:videoId>(.*?)</yt:videoId>.*?<title>(.*?)</title>', response.text, re.DOTALL)
 
         for vid_id, title in matches:
             if vid_id in blacklisted: continue
-            if vid_id not in seen_ids and len(vid_id) == 11:
-                clean_title = title.encode('utf-8').decode('unicode-escape').replace('\\"', '"')
+            if vid_id not in seen_ids:
+                # Čišćenje karaktera
+                clean_title = title.replace("&amp;", "&").replace("&quot;", '"').replace("&#39;", "'")
                 videos.append({"title": clean_title, "url": f"https://www.youtube.com/watch?v={vid_id}"})
                 seen_ids.add(vid_id)
             if len(videos) >= 8: break
