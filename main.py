@@ -11,6 +11,7 @@ from sqlalchemy import create_engine, Column, String, Text, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from pydantic import BaseModel
 from typing import List, Optional
+import xml.etree.ElementTree as ET
 
 # --- 1. SIGURNOSNA KONFIGURACIJA ---
 SECRET_KEY = "matrix-super-tajni-kljuc-pro-smart-2026"
@@ -161,33 +162,48 @@ def unhide_video(video_id: str, db: Session = Depends(get_db), token: dict = Dep
         db.commit()
     return {"status": "unhidden"}
 
+# --- AUTOMATSKO YOUTUBE POVLAČENJE (RSS FEED) ---
 @app.get("/api/youtube")
 def get_youtube_videos(db: Session = Depends(get_db)):
     MY_CHANNEL_ID = "UC6ilBUks_oFMSD8CE9qD6lQ"
-    url = f"https://www.youtube.com/channel/{MY_CHANNEL_ID}/videos"
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-    }
+    # Koristimo zvanični YouTube RSS feed umesto HTML-a (ovo YouTube ne blokira)
+    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={MY_CHANNEL_ID}"
     
     try:
+        # Tvoja logika za skrivene videe iz admin panela ostaje
         blacklisted = [v.video_id for v in db.query(DBHiddenVideo).all()]
-        response = requests.get(url, headers=headers, timeout=15)
+        
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         
+        root = ET.fromstring(response.content)
+        
+        # Pojednostavljivanje XML-a za lakše čitanje
+        for elem in root.iter():
+            if '}' in elem.tag:
+                elem.tag = elem.tag.split('}', 1)[1]
+                
         videos = []
         seen_ids = set()
-        matches = re.findall(r'"videoId":"([^"]+)".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\]', response.text)
-
-        for vid_id, title in matches:
-            if vid_id in blacklisted: continue
-            if vid_id not in seen_ids and len(vid_id) == 11:
-                clean_title = title.encode('utf-8').decode('unicode-escape').replace('\\"', '"')
-                videos.append({"title": clean_title, "url": f"https://www.youtube.com/watch?v={vid_id}"})
-                seen_ids.add(vid_id)
-            if len(videos) >= 8: break
+        
+        # Prolazimo kroz sve videe koje nam YouTube pošalje, do maksimum 8 videa
+        for entry in root.findall('entry'):
+            video_id = entry.find('videoId').text
+            title = entry.find('title').text
+            
+            if video_id not in seen_ids and video_id not in blacklisted:
+                videos.append({
+                    "title": title,
+                    "url": f"https://www.youtube.com/watch?v={video_id}",
+                    "thumbnail": f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
+                })
+                seen_ids.add(video_id)
+            
+            if len(videos) >= 8:
+                break
                 
         return videos
+        
     except Exception as e:
+        print(f"Greška pri povlačenju YouTube videa: {e}")
         return []
