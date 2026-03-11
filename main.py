@@ -165,7 +165,7 @@ def unhide_video(video_id: str, db: Session = Depends(get_db), token: dict = Dep
 # --- AUTOMATSKO YOUTUBE POVLAČENJE (RSS FEED) ---
 @app.get("/api/youtube")
 def get_youtube_videos(db: Session = Depends(get_db)):
-    MY_CHANNEL_ID = "UC6ilBUks_oFMSD8CE9qD6lQ"
+    MY_CHANNEL_ID = "UC6ilBUks_oFMSD8CE9qD6lQ" #osvežavanje
     # Koristimo zvanični YouTube RSS feed umesto HTML-a (ovo YouTube ne blokira)
     url = f"https://www.youtube.com/feeds/videos.xml?channel_id={MY_CHANNEL_ID}"
     
