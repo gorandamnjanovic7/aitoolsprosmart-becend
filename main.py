@@ -13,13 +13,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_FILE = "products.json"
+# ======================================================================
+# KLJUČNA PROMENA ZA TRAJNO ČUVANJE: 
+# Ako smo na serveru (Railway) gde postoji trajni disk '/data', čuvaj tu!
+# Ako smo na tvom kompu, čuvaj lokalno. NEMA VIŠE BRISANJA!
+# ======================================================================
+if os.path.exists("/data"):
+    DB_FILE = "/data/products.json"
+else:
+    DB_FILE = "products.json"
 
 def load_db():
     if not os.path.exists(DB_FILE): return []
-    with open(DB_FILE, "r") as f:
-        try: return json.load(f)
-        except: return []
+    try:
+        with open(DB_FILE, "r") as f: 
+            return json.load(f)
+    except: 
+        return []
 
 def save_db(data):
     with open(DB_FILE, "w") as f:
@@ -29,14 +39,14 @@ def save_db(data):
 async def get_products():
     return load_db()
 
-# KLJUČNA IZMENA: Primi bilo koji JSON (Request body) bez provere polja
 @app.post("/api/products")
 async def create_product(request: Request):
     product_data = await request.json()
     db_data = load_db()
+    product_data['id'] = str(product_data.get('id'))
     db_data.append(product_data)
     save_db(db_data)
-    return {"status": "deployed", "data_received": product_data}
+    return {"status": "deployed"}
 
 @app.put("/api/products/{product_id}")
 async def update_product(product_id: str, request: Request):
@@ -44,6 +54,7 @@ async def update_product(product_id: str, request: Request):
     db_data = load_db()
     for i, p in enumerate(db_data):
         if str(p.get('id')) == str(product_id):
+            updated_data['id'] = str(product_id)
             db_data[i] = updated_data
             save_db(db_data)
             return {"status": "updated"}
@@ -55,6 +66,10 @@ async def delete_product(product_id: str):
     db_data = [p for p in db_data if str(p.get('id')) != str(product_id)]
     save_db(db_data)
     return {"status": "terminated"}
+
+@app.get("/api/youtube")
+async def get_videos(): 
+    return []
 
 if __name__ == "__main__":
     import uvicorn
